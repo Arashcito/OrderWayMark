@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OrderWaymark — One Box or Two?</title>
+<style>
+  :root {
+    --bg: #f6f5f1; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6a64; --line: #e3e1d9;
+    --ok: #1f7a4d; --ok-bg: #e6f4ec; --bad: #a33a2b; --bad-bg: #fbeae6; --accent: #2d4fa3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161614; --card: #201f1d; --ink: #ecebe6; --muted: #a3a29b; --line: #34332f;
+            --ok: #6fd19d; --ok-bg: #1d3328; --bad: #f08a78; --bad-bg: #3a221d; --accent: #8fb0ff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 28px 0 10px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  select { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
+           background: var(--card); color: var(--ink); max-width: 100%; }
+  .desc { color: var(--muted); margin: 10px 0 0; }
+  .verdict { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--ok);
+             border-radius: 10px; padding: 14px 16px; margin-top: 20px; }
+  .verdict.none { border-left-color: var(--bad); }
+  .verdict b { font-size: 18px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .card h3 { margin: 0 0 6px; font-size: 15px; display: flex; justify-content: space-between; gap: 8px; }
+  .price { font-size: 24px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .pill { font-size: 12px; padding: 2px 8px; border-radius: 99px; white-space: nowrap; align-self: center; }
+  .pill.ok { background: var(--ok-bg); color: var(--ok); }
+  .pill.bad { background: var(--bad-bg); color: var(--bad); }
+  .best { outline: 2px solid var(--ok); }
+  ul.boxes { list-style: none; padding: 0; margin: 8px 0; }
+  ul.boxes li { padding: 6px 0; border-top: 1px dashed var(--line); font-size: 14px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .reasons { color: var(--bad); font-size: 13px; margin: 6px 0 0; padding-left: 18px; }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line);
+          border-radius: 10px; overflow: hidden; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-top: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; border-top: 0; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .table-wrap { overflow-x: auto; }
+  footer { margin-top: 32px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>OrderWaymark — One Box or Two?</h1>
+  <p class="sub">One keyboard, one mouse, one deadline. Pick the cheapest plan that gets <em>both</em> items there on time.</p>
+
+  <label for="scenario"><b>Scenario</b></label><br>
+  <select id="scenario"></select>
+  <p class="desc" id="desc"></p>
+
+  <div id="verdict" class="verdict"></div>
+
+  <h2>Strategies compared</h2>
+  <div class="grid" id="strategies"></div>
+
+  <h2>Every plan the planner considered</h2>
+  <div class="table-wrap"><table id="candidates"></table></div>
+
+  <footer>Quotes, stock and arrival dates are synthetic demo data. Prices are computed in integer cents.</footer>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const money = (c) => c == null ? "—" : "$" + (c / 100).toFixed(2);
+const day = (iso) => iso ? new Date(iso + "T12:00:00").toLocaleDateString("en-CA", {weekday: "short", month: "short", day: "numeric"}) : "—";
+
+function boxesHtml(plan) {
+  return '<ul class="boxes">' + plan.boxes.map(b =>
+    `<li><b>${esc(b.warehouseName)}</b>: ${esc(b.items.join(", "))}
+     <span class="muted">· ${money(b.priceCents)} · arrives ${day(b.arrives)}</span></li>`).join("") + "</ul>";
+}
+
+function render(d) {
+  $("desc").textContent = d.scenario ? d.scenario.description : "";
+  const v = $("verdict");
+  if (d.status === "PLANNED") {
+    v.className = "verdict";
+    v.innerHTML = `<b>${esc(d.winner.summary)} — ${esc(d.winner.total)}</b><p>${esc(d.explanation)}</p>`;
+  } else {
+    v.className = "verdict none";
+    v.innerHTML = `<b>NO_ON_TIME_PLAN</b><p>${esc(d.explanation)}</p>`;
+  }
+
+  $("strategies").innerHTML = d.strategies.map(s => {
+    const ok = s.status === "PLANNED";
+    const isBest = ok && d.winner && s.plan.totalCents === d.winner.totalCents;
+    return `<div class="card ${isBest ? "best" : ""}">
+      <h3>${esc(s.label)} <span class="pill ${ok ? "ok" : "bad"}">${esc(s.status)}</span></h3>
+      <div class="price">${s.plan ? money(s.plan.totalCents) : "—"}</div>
+      ${s.plan ? `<div class="muted">${s.plan.boxCount} box${s.plan.boxCount === 1 ? "" : "es"} · all arrive by ${day(s.plan.latestArrival)} (deadline ${day(d.deadline)})</div>` + boxesHtml(s.plan) : ""}
+      <p class="muted">${esc(s.explanation)}</p>
+    </div>`;
+  }).join("");
+
+  const names = Object.fromEntries(d.warehouses.map(w => [w.id, w.name]));
+  const head = d.items.map(i => `<th>${esc(i.name)}</th>`).join("");
+  $("candidates").innerHTML = `<tr>${head}<th>Boxes</th><th>Total</th><th>Arrives</th><th>Result</th></tr>` +
+    d.candidates.map(c => {
+      const won = d.winner && JSON.stringify(c.assignment) === JSON.stringify(d.winner.assignment);
+      const result = c.valid
+        ? `<span class="pill ok">${won ? "✓ chosen" : "valid"}</span>`
+        : `<span class="pill bad">rejected</span><ul class="reasons">${c.rejections.map(r => `<li>${esc(r)}</li>`).join("")}</ul>`;
+      return `<tr>${c.assignment.map(w => `<td>${esc(names[w] || w)}</td>`).join("")}
+        <td class="num">${c.boxCount}</td><td class="num">${money(c.totalCents)}</td>
+        <td class="num">${day(c.latestArrival)}</td><td>${result}</td></tr>`;
+    }).join("");
+}
+
+async function load(id) {
+  const res = await fetch("/api/plan", {method: "POST", headers: {"Content-Type": "application/json"},
+                                       body: JSON.stringify({scenario: id})});
+  const d = await res.json();
+  if (!res.ok) {
+    if (id !== "one-box-wins") return load("one-box-wins");
+    $("verdict").textContent = d.error || "Request failed"; return;
+  }
+  const sel = $("scenario");
+  if (!sel.options.length) {
+    sel.innerHTML = d.scenarios.map(s => `<option value="${esc(s.id)}">${esc(s.title)}</option>`).join("");
+    sel.addEventListener("change", () => { history.replaceState(null, "", "#" + sel.value); load(sel.value); });
+  }
+  sel.value = d.scenario.id;
+  render(d);
+}
+
+load(location.hash.slice(1) || "one-box-wins").catch(() => load("one-box-wins"));
+window.addEventListener("hashchange", () => load(location.hash.slice(1) || "one-box-wins"));
+</script>
+</body>
+</html>

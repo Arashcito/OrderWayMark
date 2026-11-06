@@ -1,0 +1,7 @@
+target/
+/data/olist/
+.DS_Store
+.idea/
+*.iml
+.vscode/
+.claude/
