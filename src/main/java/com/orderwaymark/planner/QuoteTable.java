@@ -16,6 +16,10 @@ public final class QuoteTable implements QuoteProvider {
         return this;
     }
 
+    public Optional<Quote> get(String warehouseId, Collection<String> skus) {
+        return Optional.ofNullable(quotes.get(key(warehouseId, skus)));
+    }
+
     public QuoteTable copy() {
         QuoteTable t = new QuoteTable();
         t.quotes.putAll(quotes);

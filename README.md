@@ -21,6 +21,64 @@ mvn package && java -jar target/orderwaymark.jar
 java -jar target/orderwaymark.jar benchmark # optional Olist benchmark (see below)
 ```
 
+## React frontend (`frontend/`)
+
+A one-page React + Vite app (JavaScript, plain CSS). It has a scenario picker, an editable Ottawa
+combined-box quote and a Recalculate button. It shows the recommended plan, its box count, total
+cost and explanation, and compares it with cheapest per item and fewest boxes first. The Vite dev
+server forwards `/api/*` to Spring Boot on port 8080 (see `frontend/vite.config.js`).
+
+Prerequisites: JDK 21, Maven, and Node.js 18 or later with npm.
+
+### Start both parts from IntelliJ
+
+Open the project root (`OrderWaymark/`) in IntelliJ IDEA, then open two terminal tabs
+(**View → Tool Windows → Terminal**, then **+**).
+
+**Tab 1, the Spring Boot API on port 8080:**
+
+```bash
+mvn spring-boot:run
+```
+
+You can also run `com.orderwaymark.OrderWaymarkApplication` with the green ▶ gutter icon.
+
+**Tab 2, the React app on port 5173.** Install dependencies once:
+
+```bash
+cd frontend
+npm install
+```
+
+Then start the dev server:
+
+```bash
+npm run dev
+```
+
+You can also open `frontend/package.json` and click ▶ next to the `dev` script.
+
+**Open <http://localhost:5173/> in your browser.** Start Spring Boot first. If it isn't running,
+the page shows an error banner instead of results.
+
+Production build check:
+
+```bash
+npm --prefix frontend run build
+```
+
+### Expected behaviour
+
+| Scenario | Ottawa combined quote | Recommendation |
+|---|---:|---|
+| 1. One box wins | $8.00 (default) | **Ottawa, 1 box, $8.00** |
+| 1. One box wins | $11.00 | Ottawa, 1 box, $11.00 (a price tie goes to fewer boxes) |
+| 1. One box wins | $11.01 | **Montréal keyboard + Ottawa mouse, 2 boxes, $11.00** |
+| 4b. Nothing arrives on time | any | **No on-time plan**, with the reason each plan was rejected |
+
+The quote field accepts dollars with up to two decimal places, from $0.00 to $1,000.00. Anything
+else shows an inline error and makes no request.
+
 ## How the planner works
 
 The planner is `com.orderwaymark.planner.Planner`. It is plain Java with no Spring dependency.
@@ -59,6 +117,11 @@ Or you can send a custom order:
   "quotes": [{ "warehouse": "MTL", "items": ["keyboard", "mouse"], "priceCents": 1200, "arrives": "2026-11-13" }]
 }
 ```
+
+You can add `"ottawaCombinedQuoteCents": 1101` to a scenario request. It replaces the Ottawa
+keyboard + mouse box price for that request, and the box keeps the scenario's arrival date. The value
+must be a whole number of cents from 0 to 100000. It is rejected on custom orders, which carry their
+own `quotes`. The response echoes the effective value in `ottawaCombinedQuoteCents`.
 
 The response contains `status` (`PLANNED` or `NO_ON_TIME_PLAN`), `winner`, `explanation`, every
 evaluated plan in `candidates` (each with its `rejections`), and the three `strategies`. An invalid
@@ -120,5 +183,5 @@ the first N orders.
 | 3 | Stock changes the answer | `PlannerTest.StockChanges` |
 | 4 | Whole order on time: Friday qualifies, one late box disqualifies, all late → `NO_ON_TIME_PLAN` | `PlannerTest.OnTime` |
 | 5 | Deterministic ties (fewer boxes, stable tie-break, repeated runs) | `PlannerTest.Ties` |
-| 6 | API: valid, custom, no-plan, invalid requests; page served | `PlanControllerTest` |
+| 6 | API: valid, custom, no-plan, invalid requests; Ottawa quote override and its validation; page served | `PlanControllerTest` |
 | 6 | Olist joins on tiny synthetic CSVs, limit, benchmark determinism, missing data | `OlistImporterTest` |

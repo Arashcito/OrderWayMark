@@ -81,6 +81,41 @@ class PlanControllerTest {
     }
 
     @Test
+    void ottawaQuoteOverrideChangesTheAnswer() throws Exception {
+        post("{\"scenario\":\"one-box-wins\"}")
+                .andExpect(jsonPath("$.ottawaCombinedQuoteCents").value(800))
+                .andExpect(jsonPath("$.ottawaCombinedQuoteOverridden").value(false));
+        post("{\"scenario\":\"one-box-wins\",\"ottawaCombinedQuoteCents\":1100}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.winner.boxCount").value(1))
+                .andExpect(jsonPath("$.winner.totalCents").value(1100));
+        post("{\"scenario\":\"one-box-wins\",\"ottawaCombinedQuoteCents\":1101}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ottawaCombinedQuoteCents").value(1101))
+                .andExpect(jsonPath("$.ottawaCombinedQuoteOverridden").value(true))
+                .andExpect(jsonPath("$.winner.boxCount").value(2))
+                .andExpect(jsonPath("$.winner.totalCents").value(1100))
+                .andExpect(jsonPath("$.strategies[2].plan.totalCents").value(1101));
+        // the override keeps the scenario's arrival date, so all-late stays late
+        post("{\"scenario\":\"all-late\",\"ottawaCombinedQuoteCents\":100}")
+                .andExpect(jsonPath("$.status").value("NO_ON_TIME_PLAN"));
+    }
+
+    @Test
+    void invalidOttawaQuoteOverride() throws Exception {
+        post("{\"scenario\":\"one-box-wins\",\"ottawaCombinedQuoteCents\":-1}").andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", containsString("between 0 and")));
+        post("{\"scenario\":\"one-box-wins\",\"ottawaCombinedQuoteCents\":1100.5}").andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", containsString("whole number of cents")));
+        post("{\"scenario\":\"one-box-wins\",\"ottawaCombinedQuoteCents\":100001}").andExpect(status().isBadRequest());
+        post("{\"scenario\":\"one-box-wins\",\"ottawaCombinedQuoteCents\":\"abc\"}").andExpect(status().isBadRequest());
+        post("{\"deadline\":\"2026-11-13\",\"items\":[\"keyboard\"],\"warehouses\":[{\"id\":\"MTL\"}],"
+                + "\"ottawaCombinedQuoteCents\":900}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", containsString("only be used with a 'scenario'")));
+    }
+
+    @Test
     void servesThePage() throws Exception {
         mvc.perform(get("/")).andExpect(status().isOk()).andExpect(forwardedUrl("index.html"));
         mvc.perform(get("/index.html")).andExpect(status().isOk())

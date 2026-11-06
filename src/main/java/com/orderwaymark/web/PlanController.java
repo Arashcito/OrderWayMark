@@ -6,12 +6,14 @@ import com.orderwaymark.planner.LineItem;
 import com.orderwaymark.planner.Order;
 import com.orderwaymark.planner.PlanReport;
 import com.orderwaymark.planner.Planner;
+import com.orderwaymark.planner.Quote;
 import com.orderwaymark.planner.QuoteTable;
 import com.orderwaymark.planner.Warehouse;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -35,9 +37,21 @@ public class PlanController {
                     .orElseThrow(() -> new BadRequestException("Unknown scenario '" + req.scenario()
                             + "'. Known: " + DemoScenarios.all().keySet()));
             out.put("scenario", Map.of("id", s.id(), "title", s.title(), "description", s.description()));
+            QuoteTable quotes = s.quotes().copy();
+            Quote combined = quotes.get(DemoScenarios.OTT, OTT_COMBINED).orElseThrow();
+            if (req.ottawaCombinedQuoteCents() != null) {
+                long cents = parseOverride(req.ottawaCombinedQuoteCents());
+                combined = new Quote(cents, combined.arrives());
+                quotes.put(DemoScenarios.OTT, OTT_COMBINED, combined.priceCents(), combined.arrives());
+            }
+            out.put("ottawaCombinedQuoteCents", combined.priceCents());
+            out.put("ottawaCombinedQuoteOverridden", req.ottawaCombinedQuoteCents() != null);
             out.put("warehouses", s.warehouses());
-            report = s.run();
+            report = new Planner(s.warehouses(), quotes).plan(s.order());
         } else {
+            if (req.ottawaCombinedQuoteCents() != null)
+                throw new BadRequestException("'ottawaCombinedQuoteCents' can only be used with a 'scenario'; "
+                        + "for a custom order, put the price in 'quotes'.");
             Custom c = validate(req);
             out.put("warehouses", c.warehouses);
             report = new Planner(c.warehouses, c.quotes).plan(c.order);
@@ -52,6 +66,20 @@ public class PlanController {
         out.put("strategies", report.strategies().stream().map(Json::strategy).toList());
         out.put("candidates", report.candidates().stream().map(Json::candidate).toList());
         return out;
+    }
+
+    static final List<String> OTT_COMBINED = List.of(DemoScenarios.KEYBOARD, DemoScenarios.MOUSE);
+    static final long MAX_OVERRIDE_CENTS = 100_000; // $1,000.00
+
+    private static long parseOverride(BigDecimal v) {
+        BigDecimal n = v.stripTrailingZeros();
+        if (n.scale() > 0) {
+            throw new BadRequestException("'ottawaCombinedQuoteCents' must be a whole number of cents (e.g. 1101 for $11.01).");
+        }
+        if (n.signum() < 0 || n.compareTo(BigDecimal.valueOf(MAX_OVERRIDE_CENTS)) > 0) {
+            throw new BadRequestException("'ottawaCombinedQuoteCents' must be between 0 and " + MAX_OVERRIDE_CENTS + ".");
+        }
+        return n.longValueExact();
     }
 
     private record Custom(List<Warehouse> warehouses, QuoteTable quotes, Order order) {
