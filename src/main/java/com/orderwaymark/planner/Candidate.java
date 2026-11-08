@@ -11,16 +11,25 @@ import java.util.Objects;
  * @param assignment warehouse id per line item, in order-item order
  * @param tieBreakKey index of each item's warehouse in the declared warehouse list; compared
  *                    lexicographically so earlier-declared warehouses win exact ties
+ * @param totalCents shipping paid today
+ * @param inventoryCostCents expected future cost of the stock this plan uses up (0 without a forecast)
  * @param rejections empty when the plan is valid
  */
 public record Candidate(List<String> assignment, List<Integer> tieBreakKey, List<Box> boxes,
-                        long totalCents, List<String> rejections) {
+                        long totalCents, long inventoryCostCents, List<String> inventoryNotes,
+                        List<String> rejections) {
 
     public Candidate {
         assignment = List.copyOf(assignment);
         tieBreakKey = List.copyOf(tieBreakKey);
         boxes = List.copyOf(boxes);
+        inventoryNotes = List.copyOf(inventoryNotes);
         rejections = List.copyOf(rejections);
+    }
+
+    /** Shipping today plus expected future stock cost: what the Waymark planner minimizes. */
+    public long effectiveCents() {
+        return totalCents + inventoryCostCents;
     }
 
     public boolean valid() {
@@ -44,8 +53,14 @@ public record Candidate(List<String> assignment, List<Integer> tieBreakKey, List
         return Integer.compare(a.tieBreakKey.size(), b.tieBreakKey.size());
     }
 
-    /** Cost, then fewer boxes, then stable warehouse-order tie-break. */
+    /** Effective cost (shipping + expected future stock cost), then fewer boxes, then stable tie-break. */
     public static final Comparator<Candidate> BY_COST =
+            Comparator.comparingLong(Candidate::effectiveCents)
+                    .thenComparingInt(Candidate::boxCount)
+                    .thenComparing(Candidate::compareTieBreak);
+
+    /** Today's shipping price only, then fewer boxes, then stable tie-break. */
+    public static final Comparator<Candidate> BY_SHIPPING =
             Comparator.comparingLong(Candidate::totalCents)
                     .thenComparingInt(Candidate::boxCount)
                     .thenComparing(Candidate::compareTieBreak);

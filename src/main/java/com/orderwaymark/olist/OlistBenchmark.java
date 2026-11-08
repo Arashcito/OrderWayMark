@@ -25,6 +25,9 @@ public final class OlistBenchmark {
     }
 
     public static int run(String[] args, PrintStream out) throws Exception {
+        if (args.length > 0 && args[0].equals("stream")) {
+            return OlistStreamBenchmark.run(java.util.Arrays.copyOfRange(args, 1, args.length), out);
+        }
         Path dir = Path.of(args.length > 0 ? args[0] : "data/olist");
         int limit = Math.min(MAX_ORDERS, args.length > 1 ? Integer.parseInt(args[1]) : MAX_ORDERS);
         if (!OlistImporter.available(dir)) {

@@ -17,7 +17,11 @@ import java.util.stream.Collectors;
  * <p>Plain Java, no framework. For n items and w warehouses it enumerates all w^n assignments
  * (4 for the two-item, two-warehouse demo), groups items by warehouse into one box per warehouse,
  * prices each box, rejects plans with insufficient stock, missing quotes or a late box, and ranks
- * the rest by total cents, then fewer boxes, then a stable warehouse-order tie-break.
+ * the rest by effective cost, then fewer boxes, then a stable warehouse-order tie-break.
+ *
+ * <p>Effective cost is today's shipping plus the expected future cost of the stock the plan uses
+ * up, as priced by an {@link InventoryValuation}. With {@link InventoryValuation#NONE} (the default)
+ * that future cost is zero and the planner simply picks the cheapest on-time plan.
  */
 public final class Planner {
 
@@ -26,11 +30,17 @@ public final class Planner {
 
     private final List<Warehouse> warehouses;
     private final QuoteProvider quotes;
+    private final InventoryValuation valuation;
 
     public Planner(List<Warehouse> warehouses, QuoteProvider quotes) {
+        this(warehouses, quotes, InventoryValuation.NONE);
+    }
+
+    public Planner(List<Warehouse> warehouses, QuoteProvider quotes, InventoryValuation valuation) {
         if (warehouses.isEmpty()) throw new IllegalArgumentException("need at least one warehouse");
         this.warehouses = List.copyOf(warehouses);
         this.quotes = quotes;
+        this.valuation = valuation == null ? InventoryValuation.NONE : valuation;
     }
 
     public PlanReport plan(Order order) {
@@ -40,9 +50,10 @@ public final class Planner {
         StrategyResult optimal = optimal(order, candidates, best);
         StrategyResult perItem = cheapestPerItem(order, candidates);
         StrategyResult fewest = fewestBoxesFirst(order, candidates);
+        StrategyResult today = cheapestToday(order, candidates);
 
         return new PlanReport(order, optimal.status(), best.orElse(null), optimal.explanation(),
-                candidates, List.of(optimal, perItem, fewest));
+                candidates, List.of(optimal, perItem, fewest, today));
     }
 
     // ---------------------------------------------------------------- enumeration
@@ -78,21 +89,30 @@ public final class Planner {
         }
 
         List<String> rejections = new ArrayList<>();
+        List<String> inventoryNotes = new ArrayList<>();
         List<Box> boxes = new ArrayList<>();
         long total = 0;
+        long inventoryCost = 0;
         for (var e : grouped.entrySet()) {
             Warehouse wh = warehouses.get(e.getKey());
             List<LineItem> contents = e.getValue();
 
             Map<String, Long> needed = contents.stream()
                     .collect(Collectors.groupingBy(LineItem::sku, LinkedHashMap::new, Collectors.counting()));
-            needed.forEach((sku, qty) -> {
+            for (var need : needed.entrySet()) {
+                String sku = need.getKey();
+                int qty = need.getValue().intValue();
                 int onHand = wh.unitsOf(sku);
                 if (onHand < qty) {
                     rejections.add("Insufficient stock: %s has %d %s, needs %d."
                             .formatted(wh.name(), onHand, nameOf(contents, sku), qty));
+                    continue;
                 }
-            });
+                LineItem item = contents.stream().filter(li -> li.sku().equals(sku)).findFirst().orElseThrow();
+                InventoryValuation.Cost cost = valuation.value(wh, item, onHand, qty);
+                inventoryCost += cost.cents();
+                if (cost.note() != null) inventoryNotes.add(cost.note());
+            }
 
             Quote q = quotes.quote(wh, contents).orElse(null);
             Box box = new Box(wh.id(), wh.name(), contents, q);
@@ -114,7 +134,7 @@ public final class Planner {
             assignment.add(warehouses.get(i).id());
             key.add(i);
         }
-        return new Candidate(assignment, key, boxes, total, rejections);
+        return new Candidate(assignment, key, boxes, total, inventoryCost, inventoryNotes, rejections);
     }
 
     // ---------------------------------------------------------------- strategies
@@ -126,22 +146,36 @@ public final class Planner {
         }
         Candidate win = best.get();
         List<Candidate> valid = all.stream().filter(Candidate::valid).sorted(Candidate.BY_COST).toList();
+        boolean forecasting = valid.stream().anyMatch(c -> c.inventoryCostCents() > 0);
         StringBuilder why = new StringBuilder();
-        why.append("Chose %s for %s: the cheapest of %d valid plan%s"
-                .formatted(describePlan(win), Money.format(win.totalCents()), valid.size(), valid.size() == 1 ? "" : "s"));
+        if (forecasting) {
+            why.append("Chose %s: %s shipping + %s expected future stock cost = %s, the lowest of %d valid plan%s"
+                    .formatted(describePlan(win), Money.format(win.totalCents()), Money.format(win.inventoryCostCents()),
+                            Money.format(win.effectiveCents()), valid.size(), valid.size() == 1 ? "" : "s"));
+        } else {
+            why.append("Chose %s for %s: the cheapest of %d valid plan%s"
+                    .formatted(describePlan(win), Money.format(win.totalCents()), valid.size(), valid.size() == 1 ? "" : "s"));
+        }
         why.append(", with everything arriving by %s for a %s deadline.".formatted(day(win.latestArrival()), day(order.deadline())));
         if (valid.size() > 1) {
             Candidate runnerUp = valid.get(1);
-            long diff = runnerUp.totalCents() - win.totalCents();
+            long diff = runnerUp.effectiveCents() - win.effectiveCents();
             if (diff > 0) {
-                why.append(" Next best was %s at %s (%s more)."
-                        .formatted(describePlan(runnerUp), Money.format(runnerUp.totalCents()), Money.format(diff)));
+                why.append(" Next best was %s at %s%s (%s more)."
+                        .formatted(describePlan(runnerUp), Money.format(runnerUp.effectiveCents()),
+                                forecasting ? " effective" : "", Money.format(diff)));
             } else if (runnerUp.boxCount() > win.boxCount()) {
                 why.append(" It tied on price with %s and won on fewer boxes.".formatted(describePlan(runnerUp)));
             } else {
                 why.append(" It tied with %s on price and box count and won the stable tie-break (earlier-listed warehouse)."
                         .formatted(describePlan(runnerUp)));
             }
+        }
+        Candidate cheapestToday = valid.stream().min(Candidate.BY_SHIPPING).orElseThrow();
+        if (cheapestToday != win && cheapestToday.totalCents() < win.totalCents()) {
+            why.append(" The cheapest plan today, %s at %s, was passed over because it uses scarce stock: %s"
+                    .formatted(describePlan(cheapestToday), Money.format(cheapestToday.totalCents()),
+                            String.join(" ", cheapestToday.inventoryNotes())));
         }
         long rejected = all.size() - valid.size();
         if (rejected > 0) why.append(" %d plan%s rejected.".formatted(rejected, rejected == 1 ? " was" : "s were"));
@@ -196,12 +230,33 @@ public final class Planner {
                 PlanStatus.PLANNED, p, why);
     }
 
+    private StrategyResult cheapestToday(Order order, List<Candidate> all) {
+        Optional<Candidate> pick = all.stream().filter(Candidate::valid).min(Candidate.BY_SHIPPING);
+        if (pick.isEmpty()) {
+            return new StrategyResult(Strategy.CHEAPEST_TODAY, Strategy.CHEAPEST_TODAY.label(),
+                    PlanStatus.NO_ON_TIME_PLAN, null, "No valid plan.");
+        }
+        Candidate p = pick.get();
+        String why = "Ranks valid plans by today's shipping price only, ignoring the stock they use up: %s at %s."
+                .formatted(describePlan(p), Money.format(p.totalCents())) + compareToOptimal(all, p);
+        return new StrategyResult(Strategy.CHEAPEST_TODAY, Strategy.CHEAPEST_TODAY.label(), PlanStatus.PLANNED, p, why);
+    }
+
     private String compareToOptimal(List<Candidate> all, Candidate p) {
-        return all.stream().filter(Candidate::valid).min(Candidate.BY_COST)
-                .map(best -> best.totalCents() < p.totalCents()
-                        ? " That is %s more than the Waymark plan.".formatted(Money.format(p.totalCents() - best.totalCents()))
-                        : " Same cost as the Waymark plan.")
-                .orElse("");
+        return all.stream().filter(Candidate::valid).min(Candidate.BY_COST).map(best -> {
+            long ship = p.totalCents() - best.totalCents();
+            long eff = p.effectiveCents() - best.effectiveCents();
+            if (ship > 0) return " That is %s more than the Waymark plan.".formatted(Money.format(ship));
+            if (ship < 0) {
+                return " It saves %s in shipping today versus the Waymark plan, but uses stock expected to cost %s later (net %s worse)."
+                        .formatted(Money.format(-ship), Money.format(p.inventoryCostCents()), Money.format(eff));
+            }
+            if (eff > 0) {
+                return " Same shipping cost as the Waymark plan, but uses stock expected to cost %s later."
+                        .formatted(Money.format(p.inventoryCostCents()));
+            }
+            return " Same cost as the Waymark plan.";
+        }).orElse("");
     }
 
     // ---------------------------------------------------------------- text helpers

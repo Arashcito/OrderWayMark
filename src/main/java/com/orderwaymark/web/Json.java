@@ -33,6 +33,9 @@ final class Json {
         m.put("valid", c.valid());
         m.put("totalCents", c.totalCents());
         m.put("total", Money.format(c.totalCents()));
+        m.put("inventoryCostCents", c.inventoryCostCents());
+        m.put("effectiveCents", c.effectiveCents());
+        m.put("inventoryNotes", c.inventoryNotes());
         m.put("boxCount", c.boxCount());
         m.put("latestArrival", c.latestArrival());
         m.put("boxes", c.boxes().stream().map(Json::box).toList());

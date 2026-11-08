@@ -47,7 +47,7 @@ public class PlanController {
             out.put("ottawaCombinedQuoteCents", combined.priceCents());
             out.put("ottawaCombinedQuoteOverridden", req.ottawaCombinedQuoteCents() != null);
             out.put("warehouses", s.warehouses());
-            report = new Planner(s.warehouses(), quotes).plan(s.order());
+            report = new Planner(s.warehouses(), quotes, s.valuation()).plan(s.order());
         } else {
             if (req.ottawaCombinedQuoteCents() != null)
                 throw new BadRequestException("'ottawaCombinedQuoteCents' can only be used with a 'scenario'; "

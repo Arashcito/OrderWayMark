@@ -116,6 +116,13 @@ button:focus-visible, summary:focus-visible { outline: 3px solid var(--blue); ou
   display: grid; grid-template-columns: 110px 1fr auto auto; gap: 12px; align-items: baseline;
   background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; font-size: 14px;
 }
+.stats dd.sub { margin-top: 2px; font-size: 12px; font-weight: 500; }
+.stock-note {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px;
+  margin: 0 0 14px; font-size: 14px;
+}
+.stock-note ul { margin: 4px 0 0; padding-left: 18px; color: var(--ink-2); }
+.compare .sub.future { display: block; color: var(--warn); font-weight: 500; }
 .explanation { margin: 0; font-size: 14px; color: var(--ink); max-width: 75ch; }
 .reasons { margin: 12px 0 0; padding-left: 20px; font-size: 14px; }
 .reasons li + li { margin-top: 4px; }

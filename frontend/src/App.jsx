@@ -158,6 +158,7 @@ function Recommendation({ data }) {
   }
 
   const w = data.winner;
+  const forecasting = data.candidates.some((c) => c.inventoryCostCents > 0);
   return (
     <section className="panel recommended" aria-labelledby="rec-heading">
       <p className="tag ok">
@@ -168,6 +169,9 @@ function Recommendation({ data }) {
         <div>
           <dt>Total cost</dt>
           <dd className="num big">{money(w.totalCents)}</dd>
+          {forecasting && (
+            <dd className="sub">+ {money(w.inventoryCostCents)} expected future stock cost</dd>
+          )}
         </div>
         <div>
           <dt>Boxes</dt>
@@ -190,6 +194,16 @@ function Recommendation({ data }) {
           </li>
         ))}
       </ul>
+      {w.inventoryNotes.length > 0 && (
+        <div className="stock-note">
+          <strong>Stock impact</strong>
+          <ul>
+            {w.inventoryNotes.map((n) => (
+              <li key={n}>{n}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       <p className="explanation">{data.explanation}</p>
     </section>
   );
@@ -197,6 +211,7 @@ function Recommendation({ data }) {
 
 function Comparison({ data }) {
   const best = data.winner?.totalCents;
+  const forecasting = data.candidates.some((c) => c.inventoryCostCents > 0);
   return (
     <section className="panel" aria-labelledby="cmp-heading">
       <h2 id="cmp-heading">Strategy comparison</h2>
@@ -232,6 +247,9 @@ function Comparison({ data }) {
                 <td data-label="Total" className="r num">
                   {s.plan ? money(s.plan.totalCents) : '—'}
                   {diff > 0 && <span className="sub"> +{money(diff)}</span>}
+                  {forecasting && s.plan && s.plan.inventoryCostCents > 0 && (
+                    <span className="sub future"> + {money(s.plan.inventoryCostCents)} future stock cost</span>
+                  )}
                 </td>
                 <td data-label="Result">
                   {isRec ? (

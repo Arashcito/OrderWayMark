@@ -32,7 +32,8 @@ class PlanControllerTest {
                 .andExpect(jsonPath("$.winner.totalCents").value(800))
                 .andExpect(jsonPath("$.winner.assignment[0]").value("OTT"))
                 .andExpect(jsonPath("$.winner.boxes[0].arrives").value("2026-11-13"))
-                .andExpect(jsonPath("$.strategies", hasSize(3)))
+                .andExpect(jsonPath("$.strategies", hasSize(4)))
+                .andExpect(jsonPath("$.strategies[3].strategy").value("CHEAPEST_TODAY"))
                 .andExpect(jsonPath("$.strategies[1].strategy").value("CHEAPEST_PER_ITEM"))
                 .andExpect(jsonPath("$.strategies[1].plan.totalCents").value(1100))
                 .andExpect(jsonPath("$.candidates", hasSize(4)));
@@ -113,6 +114,23 @@ class PlanControllerTest {
                 + "\"ottawaCombinedQuoteCents\":900}")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error", containsString("only be used with a 'scenario'")));
+    }
+
+    @Test
+    void inventoryAwareScenario() throws Exception {
+        post("{\"scenario\":\"last-keyboard\"}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.winner.assignment[0]").value("MTL"))
+                .andExpect(jsonPath("$.winner.totalCents").value(1100))
+                .andExpect(jsonPath("$.winner.inventoryCostCents").value(0))
+                .andExpect(jsonPath("$.strategies[3].plan.totalCents").value(800))
+                .andExpect(jsonPath("$.strategies[3].plan.inventoryCostCents").value(419))
+                .andExpect(jsonPath("$.strategies[3].plan.effectiveCents").value(1219))
+                .andExpect(jsonPath("$.strategies[3].plan.inventoryNotes[0]", containsString("last Keyboard")));
+        // a cheap enough Ottawa quote outweighs the future stock cost
+        post("{\"scenario\":\"last-keyboard\",\"ottawaCombinedQuoteCents\":600}")
+                .andExpect(jsonPath("$.winner.assignment[0]").value("OTT"))
+                .andExpect(jsonPath("$.winner.effectiveCents").value(1019));
     }
 
     @Test

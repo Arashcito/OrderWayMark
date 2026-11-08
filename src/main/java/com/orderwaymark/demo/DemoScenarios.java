@@ -1,5 +1,6 @@
 package com.orderwaymark.demo;
 
+import com.orderwaymark.planner.InventoryForecast;
 import com.orderwaymark.planner.LineItem;
 import com.orderwaymark.planner.Order;
 import com.orderwaymark.planner.QuoteTable;
@@ -102,9 +103,27 @@ public final class DemoScenarios {
                 seedWarehouses(), seedQuotes().put(OTT, List.of(KEYBOARD, MOUSE), 1100, FRIDAY), seedOrder());
     }
 
+    /** Ottawa-area customers are expected to order 1.2 keyboards before Ottawa's next restock. */
+    public static final double OTTAWA_KEYBOARD_DEMAND = 1.2;
+    /** Serving such a customer from Montréal instead costs $6.00 more. */
+    public static final long OTTAWA_KEYBOARD_EXTRA_CENTS = 600;
+
+    public static InventoryForecast lastKeyboardForecast() {
+        return new InventoryForecast().put(OTT, KEYBOARD, OTTAWA_KEYBOARD_DEMAND, OTTAWA_KEYBOARD_EXTRA_CENTS);
+    }
+
+    public static Scenario lastKeyboard() {
+        return new Scenario("last-keyboard", "6. Ottawa's last keyboard",
+                "Seeded prices, but Ottawa's single keyboard is its last before restock, and Ottawa-area customers are "
+                        + "expected to order 1.2 more (each would cost $6 extra from Montréal). Shipping $8 from Ottawa today "
+                        + "carries an expected $4.19 future cost, so the inventory-aware planner pays $11 to split instead.",
+                seedWarehouses(), seedQuotes(), seedOrder(), lastKeyboardForecast());
+    }
+
     public static Map<String, Scenario> all() {
         Map<String, Scenario> m = new LinkedHashMap<>();
-        for (Scenario s : List.of(oneBoxWins(), twoBoxesWin(), stockChanges(), lateBox(), allLate(), priceTie())) {
+        for (Scenario s : List.of(oneBoxWins(), twoBoxesWin(), stockChanges(), lateBox(), allLate(), priceTie(),
+                lastKeyboard())) {
             m.put(s.id(), s);
         }
         return m;
