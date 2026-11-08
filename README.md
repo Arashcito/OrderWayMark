@@ -23,10 +23,25 @@ java -jar target/orderwaymark.jar benchmark # optional Olist benchmark (see belo
 
 ## React frontend (`frontend/`)
 
-A one-page React + Vite app (JavaScript, plain CSS). It has a scenario picker, an editable Ottawa
-combined-box quote and a Recalculate button. It shows the recommended plan, its box count, total
-cost and explanation, and compares it with cheapest per item and fewest boxes first. The Vite dev
-server forwards `/api/*` to Spring Boot on port 8080 (see `frontend/vite.config.js`).
+A one-page React + Vite app (JavaScript, plain CSS) that tells the demo as a story for someone who
+has never heard of the project. A sticky bar links to each step:
+
+1. **What is this?** One keyboard, one mouse, two warehouses: who ships what?
+2. **The problem.** Four things pull against each other: packing changes the price, stock runs out,
+   every box must be on time, and today's choice affects tomorrow.
+3. **Pick a scenario.** Seven scenario chips in plain words, the store's stock and prices for the
+   chosen scenario, and an editable Ottawa combined-box price ("play with it").
+4. **Before & after.** The shortcut rule that does worst in this scenario ("before") next to
+   OrderWaymark's plan ("after", labelled **Recommended**), with a one-line verdict such as
+   "OrderWaymark saves $3.00 (27%)" or "Same price, one less box".
+5. **How it decided.** All four options, the impossible ones crossed out with the reason, and the
+   chosen one highlighted.
+6. **Results.** Every rule side by side: boxes, price, hidden future cost and on-time status.
+7. **That's the demo!** Three takeaways and an honest note on the real-order benchmark.
+
+The copy for each scenario lives in `frontend/src/story.js`, and the drawings are inline SVG in
+`frontend/src/Illustrations.jsx`. The Vite dev server forwards `/api/*` to Spring Boot on port 8080
+(see `frontend/vite.config.js`).
 
 Prerequisites: JDK 21, Maven, and Node.js 18 or later with npm.
 
